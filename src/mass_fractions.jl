@@ -279,6 +279,40 @@ function neighbors(γ::Grid{R,N};
     return Field(n,γ,:n,longname,"unitless")
 end
 
+function massfractions_anisotropic(γ::Grid{R,3}) where R
+    # only works for a 3D grid
+    # get a sample with zeros
+    nfield = sum(γ.wet)
+    A = spzeros(nfield,nfield)
+
+    m = (north = massfractions_north(A,γ),
+        east   = massfractions_east(A,γ),
+        south  = massfractions_south(A,γ),
+        west   = massfractions_west(A,γ),
+        up     = massfractions_up(A,γ),
+        down   = massfractions_down(A,γ))
+
+    # get number of neighbors for each location
+    n = neighbors(m,γ)
+
+    h2v = 10.0
+    for m1 in m
+        dir = split(m1.longname)[4]
+        Im = cartesianindex(m1.γ.wet)
+        for I in Im
+            if n.tracer[I] == 6
+                if dir == "up" or dir == "down"
+                    m1.fraction[I] = 1.0/(4*h2v + 2)
+                else
+                    m1.fraction[I] = h2v/(4*h2v + 2)
+                end
+            else
+                m1.fraction[I] = 1.0/n.tracer[I]
+        end
+    end
+    return m
+end
+
 function massfractions_isotropic(γ::Grid{R,3}) where R
     # only works for a 3D grid 
     # get a sample with zeros
@@ -374,7 +408,7 @@ of `α=100_000`.
 """
 function local_solve(c::NamedTuple, w::NamedTuple) # assume: `Field`s inside
     γ = first(c).γ # assumption: all grids match up
-    m̃ = TMI.massfractions_isotropic(γ) # good first guess
+    m̃ = TMI.massfractions_anisotropic(γ) # good first guess
     TMI.local_solve!(m̃,c,w)
     return m̃
 end
@@ -475,7 +509,7 @@ function local_solve!(m::Union{NamedTuple,Vector}, c::NamedTuple, w::NamedTuple 
     b = vcat(zeros(nrow-1),1.0)
     mlocal = zeros(nmax)
     nlocal = zeros(nrow)
-    ϵ = 1e-6 # tolerance of mass conservation
+    ϵ = 1e-8 # tolerance of mass conservation
     Jlimit = 1e-4 # scaled cost function target
     wlocal = vcat([w1 for w1 in w],ϵ)
 
